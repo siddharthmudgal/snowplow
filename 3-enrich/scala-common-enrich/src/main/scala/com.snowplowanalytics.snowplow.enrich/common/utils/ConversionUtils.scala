@@ -31,9 +31,6 @@ import scala.util.control.NonFatal
 // Apache HTTP
 import org.apache.http.client.utils.URLEncodedUtils
 
-// Apache Commons
-import org.apache.commons.lang3.exception.ExceptionUtils
-
 // Apache Commons Codec
 import org.apache.commons.codec.binary.Base64
 
@@ -42,7 +39,8 @@ import scalaz._
 import Scalaz._
 
 // Scala URI
-import com.netaporter.uri.Uri
+import io.lemonlabs.uri.Uri
+import io.lemonlabs.uri.Url
 
 /**
  * General-purpose utils to help the
@@ -310,53 +308,20 @@ object ConversionUtils {
   def encodeString(enc: String, str: String): String =
     URLEncoder.encode(str, enc)
 
-  /**
-   * A wrapper around Java's
-   * URI.create().
-   *
-   * Exceptions thrown by
-   * URI.create():
-   * 1. NullPointerException
-   *    if uri is null
-   * 2. IllegalArgumentException
-   *    if uri violates RFC 2396
-   *
-   * @param uri The URI string to
-   *        convert
-   * @param useNetaporter Whether to use the
-   *        com.netaporter.uri library
-   * @return an Option-boxed URI object, or an
-   *         error message, all
-   *         wrapped in a Validation
+  /** Parses a URI using scala-uri and converts it to [[URI]].
+   * @param uri String containing the URI to parse
+   * @return [[Validation]] wrapping the result of the parsing:
+   *        - If there was no exception, [[Success]] with the parsed URI, or with [[None]] if the input was `null`.
+   *        - [[Failure]] with the error message if something went wrong.
    */
-  def stringToUri(uri: String, useNetaporter: Boolean = false): Validation[String, Option[URI]] =
+  def stringToUri(uri: String): Validation[String, Option[URI]] =
     try {
-      val r = uri.replaceAll(" ", "%20") // Because so many raw URIs are bad, #346
-      Some(URI.create(r)).success
+      Option(uri).map(Uri.parse).map(_.toJavaURI).success
     } catch {
-      case npe: NullPointerException => None.success
-      case iae: IllegalArgumentException =>
-        useNetaporter match {
-          case false => {
-            val netaporterUri = try {
-              Uri.parse(uri).success
-            } catch {
-              case NonFatal(e) =>
-                "Provided URI string [%s] could not be parsed by Netaporter: [%s]"
-                  .format(uri, ExceptionUtils.getRootCause(iae).getMessage)
-                  .fail
-            }
-            for {
-              parsedUri <- netaporterUri
-              finalUri  <- stringToUri(parsedUri.toString, true)
-            } yield finalUri
-          }
-          case true =>
-            "Provided URI string [%s] violates RFC 2396: [%s]"
-              .format(uri, ExceptionUtils.getRootCause(iae).getMessage)
-              .fail
-        }
-      case NonFatal(e) => "Unexpected error creating URI from string [%s]: [%s]".format(uri, e.getMessage).fail
+      case e: Exception =>
+        "Provided URI string [%s] could not be parsed by scala-uri. Error: [%s]"
+          .format(uri, e.getMessage)
+          .fail
     }
 
   /**
@@ -368,7 +333,7 @@ object ConversionUtils {
   def extractQuerystring(uri: URI, encoding: String): Validation[String, Map[String, String]] =
     Try(URLEncodedUtils.parse(uri, encoding).map(p => (p.getName -> p.getValue))).recoverWith {
       case NonFatal(_) =>
-        Try(Uri.parse(uri.toString).query.params).map(l => l.map(t => (t._1, t._2.getOrElse(""))))
+        Try(Url.parse(uri.toString).query.params).map(l => l.map(t => (t._1, t._2.getOrElse(""))))
     } match {
       case util.Success(s) => s.toMap.success
       case util.Failure(e) => s"Could not parse uri [$uri]. Uri parsing threw exception: [$e].".fail
