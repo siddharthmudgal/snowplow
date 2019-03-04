@@ -125,7 +125,7 @@ object IabEnrichment extends ParseableEnrichment {
    */
   private def getDatabaseUri(uri: String, database: String): ValidatedMessage[URI] =
     ConversionUtils
-      .stringToUri(uri + (if (uri.endsWith("/")) "" else "/") + database)
+      .stringToUri(uri + (if (uri.endsWith("/")) "" else "/") + database, true)
       .flatMap(_ match {
         case Some(u) => u.success
         case None    => "URI to IAB file must be provided".fail

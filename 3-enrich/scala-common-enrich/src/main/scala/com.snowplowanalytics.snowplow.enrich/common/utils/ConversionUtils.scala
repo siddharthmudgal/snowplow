@@ -20,8 +20,12 @@ import java.net.URLEncoder
 import java.lang.{Integer    => JInteger}
 import java.math.{BigDecimal => JBigDecimal}
 import java.lang.{Byte       => JByte}
+import java.nio.charset.Charset
 import java.util.UUID
 import java.nio.charset.StandardCharsets.UTF_8
+
+import io.lemonlabs.uri.config.UriConfig
+import io.lemonlabs.uri.decoding.{NoopDecoder, PercentDecoder}
 
 // Scala
 import scala.collection.JavaConversions._
@@ -308,20 +312,45 @@ object ConversionUtils {
   def encodeString(enc: String, str: String): String =
     URLEncoder.encode(str, enc)
 
-  /** Parses a URI using scala-uri and converts it to [[URI]].
-   * @param uri String containing the URI to parse
+  /** Parses a URI using scala-uri and converts it to a [[URI]], in its percent-encoded form.
+   *
+   * By default, scala-uri percent-decodes the URI and if it's not correctly percent-encoded
+   * (at least one % not followed by 2 hexadecimal digits), the parsing fails.
+   *
+   * If `percentDecode` is set to false, scala-uri retries to parse the URI without percent-decoding if it failed.
+   * Why not directly parse without percent-decoding if `percentDecode` is set to false? To let a correctly
+   * percent-encoded URI intact. Indeed, when parsing without percent-decoding, each % becomes percent-encoded and for instance
+   * a correct %20 in the input URI would become %2520 and the parsed URI would need to be decoded several times.
+   *
+   * @param uri String containing the URI to parse.
+   * @param percentDecode Specifies if the uri should be parsed without percent-decoding
+   *                      in case parsing with percent-decoding fails..
+   *
    * @return [[Validation]] wrapping the result of the parsing:
-   *        - If there was no exception, [[Success]] with the parsed URI, or with [[None]] if the input was `null`.
-   *        - [[Failure]] with the error message if something went wrong.
+   *         - [[Success]] with the parsed URI if there was no error or with [[None]] if the input was `null`.
+   *         - [[Failure]] with the error message if something went wrong.
    */
-  def stringToUri(uri: String): Validation[String, Option[URI]] =
+  def stringToUri(uri: String, percentDecode: Boolean = true): Validation[String, Option[URI]] =
     try {
       Option(uri).map(Uri.parse).map(_.toJavaURI).success
     } catch {
       case e: Exception =>
-        "Provided URI string [%s] could not be parsed by scala-uri. Error: [%s]"
-          .format(uri, e.getMessage)
-          .fail
+        percentDecode match {
+          case true =>
+            "Provided URI string [%s] could not be parsed by scala-uri (with percent decoding enabled). Error: [%s]"
+              .format(uri, e.getMessage)
+              .fail
+          case false =>
+            try {
+              implicit val config = UriConfig(decoder = NoopDecoder)
+              Option(uri).map(Uri.parse).map(_.toJavaURI).success
+            } catch {
+              case e: Exception =>
+                "Provided URI string [%s] could not be parsed by scala-uri (even without percent decoding). Error: [%s]"
+                  .format(uri, e.getMessage)
+                  .fail
+            }
+        }
     }
 
   /**
@@ -331,7 +360,7 @@ object ConversionUtils {
    * @param encoding Encoding of the URI
    */
   def extractQuerystring(uri: URI, encoding: String): Validation[String, Map[String, String]] =
-    Try(URLEncodedUtils.parse(uri, encoding).map(p => (p.getName -> p.getValue))).recoverWith {
+    Try(URLEncodedUtils.parse(uri, Charset.forName(encoding)).map(p => p.getName -> p.getValue)).recoverWith {
       case NonFatal(_) =>
         Try(Url.parse(uri.toString).query.params).map(l => l.map(t => (t._1, t._2.getOrElse(""))))
     } match {
