@@ -48,36 +48,43 @@ class StringToUriSpec extends MutableSpecification with ValidationMatchers {
       ConversionUtils.stringToUri(url) must_== Some(URI.create(url)).success
     }
 
-    "work with basic URL" >> {
+    "work with basic URL and not modify it" >> {
       (List(
         "http://www.example.com",
         "http://www.example.com/",
-        "http://www.example.com/a"
+        "http://www.example.com/a",
+        "http://www.google.com/se+arch?q=gateway+oracle+cards+denise+linn&hl=en&client=safari"
       ) ++ generateUrlsWithChars(""))
         .map(url => ConversionUtils.stringToUri(url) must_== Some(URI.create(url)).success)
+    }
+
+    "work with URL with space" >> {
+      ConversionUtils.stringToUri("http://www.example.com/sp ace") must beSuccessful
     }
 
     "work with correctly percent-encoded URL and not modify it" >> {
       val url = "www.example.com/a%20b/?c=d%20e"
       ConversionUtils.stringToUri(url) must_== Success(Some(URI.create(url)))
-      ConversionUtils.stringToUri(url, false) must_== Success(Some(URI.create(url)))
     }
 
-    "fail if the URL is not correctly percent-encoded and percentDecode is set to true" >> {
-      ConversionUtils.stringToUri("www.example.com/path/?c=d%e", true) must beFailing
+    "fail if URL not correctly percent-encoded and relaxed parsing not enabled" >> {
+      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
     }
 
-    "work with URL contain special characters: ' ', #, |, {, }, [, ]" >> {
-      List(" ", "#", "|", "{", "}", "[", "]")
-        .flatMap(generateUrlsWithChars)
-        .map(url => ConversionUtils.stringToUri(url))
-        .map(_ must beSuccessful)
+    "fail if URL contains more than one # and relaxed parsing not enabled" >> {
+      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
     }
 
-    s"work with URL containing macros" >> {
-      val urls = generateUrlsWithChars("${a}") ++
+    "fail if URL contains | and relaxed parsing not enabled" >> {
+      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
+    }
+
+    s"work with URL containing special characters or macros if relaxed parsing is enabled" >> {
+      val urls = generateUrlsWithChars("|") ++
         generateUrlsWithChars("${a}") ++
         generateUrlsWithChars("${a b}") ++
+        generateUrlsWithChars("$[a]") ++
+        generateUrlsWithChars("$[a b]") ++
         generateUrlsWithChars("#{a}") ++
         generateUrlsWithChars("#{a b}") ++
         generateUrlsWithChars("#{{a}}") ++
@@ -95,7 +102,7 @@ class StringToUriSpec extends MutableSpecification with ValidationMatchers {
         generateUrlsWithChars("%%%a%%%") ++
         generateUrlsWithChars("%%%a b%%%")
       urls
-        .map(url => ConversionUtils.stringToUri(url, false)) // false for URLs with %
+        .map(url => ConversionUtils.stringToUri(url, relaxed = true))
         .map(_ must beSuccessful)
     }
   }
