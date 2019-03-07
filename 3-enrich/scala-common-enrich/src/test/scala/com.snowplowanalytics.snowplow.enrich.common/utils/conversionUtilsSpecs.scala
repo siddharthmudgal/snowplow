@@ -30,16 +30,17 @@ class StringToUriSpec extends MutableSpecification with ValidationMatchers {
 
   /** Helper to generate URLs with `chars` at different places in the path and in the query string, doubled, tripled, etc. */
   private def generateUrlsWithChars(chars: String): List[String] = List(
-    s"http://www.example.com/a${chars}b/c",
-    s"http://www.example.com/a$chars${chars}b/c",
+    s"http://www.example.com/a/b/${chars}",
+    s"http://www.example.com/a${chars}",
+    s"http://www.example.com/a$chars${chars}",
     s"http://www.example.com/a$chars$chars${chars}b/c",
-    s"http://www.example.com/a${chars}b/c$chars${chars}d",
-    s"http://www.example.com/a${chars}b/c?d=e$chars${chars}f&g=h${chars}i&j=k",
+    s"http://www.example.com/a${chars}123/c$chars${chars}d",
+    s"http://www.example.com/a${chars}b/456?d=e$chars${chars}f&g=h${chars}i&j=k",
     s"http://www.example.com/a${chars}b/c?d=e&f=g$chars$chars${chars}h"
   )
 
-  "Parsing strings into URIs should" >> {
-    "work with null URI" >> {
+  "Parsing string into URI should" >> {
+    "work with null" >> {
       ConversionUtils.stringToUri(null) must_== None.success
     }
 
@@ -58,28 +59,48 @@ class StringToUriSpec extends MutableSpecification with ValidationMatchers {
         .map(url => ConversionUtils.stringToUri(url) must_== Some(URI.create(url)).success)
     }
 
-    "work with URL with space" >> {
-      ConversionUtils.stringToUri("http://www.example.com/sp ace") must beSuccessful
+    "work with URL with space and encode spaces as %20" >> {
+      val url = "http://www.example.com/sp a ce"
+      ConversionUtils.stringToUri(url) must_== Some(URI.create(url.replaceAll(" ", "%20"))).success
     }
 
     "work with correctly percent-encoded URL and not modify it" >> {
-      val url = "www.example.com/a%20b/?c=d%20e"
+      val url = "www.example.com/a%23b/?c=d%24e"
       ConversionUtils.stringToUri(url) must_== Success(Some(URI.create(url)))
     }
 
-    "fail if URL not correctly percent-encoded and relaxed parsing not enabled" >> {
-      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
-    }
+    s"work with URL containing special characters or macros" >> {
 
-    "fail if URL contains more than one # and relaxed parsing not enabled" >> {
-      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
-    }
+      /** Helper that encodes a URI in the same way as scala-uri. */
+      def encode(str: String) = {
+        val encoded = str
+          .replaceAll("%", "%25")
+          .replaceAll(" ", "%20")
+          .replaceAll("\\|", "%7C")
+          .replaceAll("\\$", "%24")
+          .replaceAll("\\{", "%7B")
+          .replaceAll("\\}", "%7D")
+          .replaceAll("\\[", "%5B")
+          .replaceAll("\\]", "%5D")
+          // 1st # is not encoded, all subsequent are
+          .replaceAll("#", "%23")
+          .replaceFirst("%23", "#")
 
-    "fail if URL contains | and relaxed parsing not enabled" >> {
-      ConversionUtils.stringToUri("www.example.com/path/?c=d%e") must beFailing
-    }
+        // after a #, / ? = & are also encoded
+        encoded.indexOf("#") match {
+          case -1 => encoded
+          case i =>
+            val untilSharp = encoded.substring(0, i)
+            val afterSharpEncoded = encoded
+              .substring(i)
+              .replaceAll("\\?", "%3F")
+              .replaceAll("/", "%2F")
+              .replaceAll("=", "%3D")
+              .replaceAll("&", "%26")
+            untilSharp + afterSharpEncoded
+        }
+      }
 
-    s"work with URL containing special characters or macros if relaxed parsing is enabled" >> {
       val urls = generateUrlsWithChars("|") ++
         generateUrlsWithChars("${a}") ++
         generateUrlsWithChars("${a b}") ++
@@ -89,21 +110,19 @@ class StringToUriSpec extends MutableSpecification with ValidationMatchers {
         generateUrlsWithChars("#{a b}") ++
         generateUrlsWithChars("#{{a}}") ++
         generateUrlsWithChars("#{{a b}}") ++
-        generateUrlsWithChars("@a@") ++
-        generateUrlsWithChars("@a b@") ++
         generateUrlsWithChars("#a#") ++
         generateUrlsWithChars("#a b#") ++
         generateUrlsWithChars("##a##") ++
         generateUrlsWithChars("##a b##") ++
         generateUrlsWithChars("%a%") ++
-        generateUrlsWithChars("%a b%}") ++
-        generateUrlsWithChars("%%a%%}") ++
-        generateUrlsWithChars("%%a b%%}") ++
+        generateUrlsWithChars("%a b%") ++
+        generateUrlsWithChars("%%a%%") ++
+        generateUrlsWithChars("%%a b%%") ++
         generateUrlsWithChars("%%%a%%%") ++
         generateUrlsWithChars("%%%a b%%%")
+
       urls
-        .map(url => ConversionUtils.stringToUri(url, relaxed = true))
-        .map(_ must beSuccessful)
+        .map(url => ConversionUtils.stringToUri(url) must_== Some(URI.create(encode(url))).success)
     }
   }
 }
