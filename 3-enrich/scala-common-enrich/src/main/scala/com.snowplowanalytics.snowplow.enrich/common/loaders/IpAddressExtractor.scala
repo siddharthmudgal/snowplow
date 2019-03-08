@@ -12,7 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.enrich.common.loaders
 
-// Scala
 import scala.annotation.tailrec
 
 /**
@@ -21,10 +20,10 @@ import scala.annotation.tailrec
  */
 object IpAddressExtractor {
 
-  private val ipRegex            = """\"?\[?((?:[0-9a-f]|\.|\:+)+).*\]?\"?"""
+  private val ipRegex = """\"?\[?((?:[0-9a-f]|\.|\:+)+).*\]?\"?"""
   private val XForwardedForRegex = s"""^x-forwarded-for: $ipRegex.*""".r
-  private val ForwardedForRegex  = s"""^forwarded: for=$ipRegex.*""".r
-  private val CloudfrontRegex    = s"""^$ipRegex.*""".r
+  private val ForwardedForRegex = s"""^forwarded: for=$ipRegex.*""".r
+  private val CloudfrontRegex = s"""^$ipRegex.*""".r
 
   /**
    * If a request has been forwarded, extract the original client IP address;
@@ -40,8 +39,8 @@ object IpAddressExtractor {
       case h :: t =>
         h.toLowerCase match {
           case XForwardedForRegex(originalIpAddress) => originalIpAddress
-          case ForwardedForRegex(originalIpAddress)  => originalIpAddress
-          case _                                     => extractIpAddress(t, lastIp)
+          case ForwardedForRegex(originalIpAddress) => originalIpAddress
+          case _ => extractIpAddress(t, lastIp)
         }
       case Nil => lastIp
     }
@@ -56,6 +55,6 @@ object IpAddressExtractor {
    */
   def extractIpAddress(xForwardedFor: String, lastIp: String): String = xForwardedFor match {
     case CloudfrontRegex(originalIpAddress) => originalIpAddress
-    case _                                  => lastIp
+    case _ => lastIp
   }
 }
