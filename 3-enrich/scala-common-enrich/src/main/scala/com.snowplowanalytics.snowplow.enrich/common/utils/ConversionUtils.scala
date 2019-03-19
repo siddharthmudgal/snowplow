@@ -321,28 +321,28 @@ object ConversionUtils {
    *         - [[Failure]] with the error message if something went wrong.
    */
   def stringToUri(uri: String): Validation[String, Option[URI]] =
-    try {
+    Try(
       Option(uri) // to handle null
         .map(_.replaceAll(" ", "%20"))
         .map(URI.create)
         .success
-    } catch {
+    ).recoverWith {
       case NonFatal(javaErr) =>
-        try {
-          implicit val c =
-            UriConfig(decoder = PercentDecoder(ignoreInvalidPercentEncoding = true), encoder = percentEncode -- '+')
-          Uri
-            .parse(uri)
-            .toJavaURI
-            .some
-            .success
-        } catch {
-          case NonFatal(scalaErr) =>
-            "Provided URI [%s] could not be parsed, neither by Java parsing (error: [%s]) nor by Scala parsing (error: [%s])."
-              .format(uri, javaErr.getMessage, scalaErr.getMessage)
-              .failure
-        }
-    }
+        implicit val c =
+          UriConfig(decoder = PercentDecoder(ignoreInvalidPercentEncoding = true), encoder = percentEncode -- '+')
+        Uri
+          .parseTry(uri)
+          .map(_.toJavaURI)
+          .transform( // creates Try[Validation[String, Option[URI]]]. Try will always be a Success
+            s => util.Success(Some(s).success),
+            scalaErr =>
+              util.Success(
+                "Provided URI [%s] could not be parsed, neither by Java parsing (error: [%s]) nor by Scala parsing (error: [%s])."
+                  .format(uri, javaErr.getMessage, scalaErr.getMessage)
+                  .failure
+            )
+          )
+    }.get
 
   /**
    * Attempt to extract the querystring from a URI as a map
