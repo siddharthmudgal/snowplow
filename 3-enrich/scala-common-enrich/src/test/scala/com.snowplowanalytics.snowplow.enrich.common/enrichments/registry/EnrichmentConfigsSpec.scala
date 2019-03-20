@@ -457,7 +457,8 @@ class EnrichmentConfigsSpec extends Specification with ValidationMatchers with D
             "uri": "https://example.com"
           },
           "includeUseragentFile": {
-             "database": "include_current.txt"
+             "database": "include_current.txt",
+              "uri": "file://foo:{waaat}/"
           }
         }
       }""")
