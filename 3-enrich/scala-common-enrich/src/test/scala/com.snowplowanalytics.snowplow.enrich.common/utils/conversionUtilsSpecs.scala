@@ -14,12 +14,11 @@ package com.snowplowanalytics.snowplow.enrich.common.utils
 
 import java.net.URI
 
+import cats.syntax.either._
+import cats.syntax.option._
 import org.scalacheck.Arbitrary._
 import org.specs2.{ScalaCheck, Specification}
 import org.specs2.matcher.DataTables
-import org.specs2.scalaz.ValidationMatchers
-import scalaz._
-import Scalaz._
 
 class StringToUriSpec extends Specification with DataTables {
 
@@ -27,30 +26,30 @@ class StringToUriSpec extends Specification with DataTables {
 
   def e1 =
     "SPEC NAME" || "URI" | "EXPECTED" |
-      "Empty URI" !! null ! None.success |
-      "Simple URI" !! "https://google.com" ! Some(URI.create("https://google.com")).success |
+      "Empty URI" !! null ! None.asRight |
+      "Simple URI" !! "https://google.com" ! Some(URI.create("https://google.com")).asRight |
       "Complex URI" !! "http://www.google.com/search?q=gateway+oracle+cards+denise+linn&hl=en&client=safari" ! Some(
         URI.create(
-          "http://www.google.com/search?q=gateway+oracle+cards+denise+linn&hl=en&client=safari")).success |
+          "http://www.google.com/search?q=gateway+oracle+cards+denise+linn&hl=en&client=safari")).asRight |
       "Salvageable bad URI with raw spaces" !! "http://www.psychicbazaar.com/2-tarot-cards/genre/gothic/type/all/view/grid?n=24&utm_source=GoogleSearch&utm_medium=cpc&utm_campaign=uk-tarot--gothic-tarot&utm_term=bohemian gothic tarot&utm_content=33088202008&gclid=CN2LmteX2LkCFQKWtAodrSMASw" ! Some(
         URI.create(
-          "http://www.psychicbazaar.com/2-tarot-cards/genre/gothic/type/all/view/grid?n=24&utm_source=GoogleSearch&utm_medium=cpc&utm_campaign=uk-tarot--gothic-tarot&utm_term=bohemian%20gothic%20tarot&utm_content=33088202008&gclid=CN2LmteX2LkCFQKWtAodrSMASw")).success |
+          "http://www.psychicbazaar.com/2-tarot-cards/genre/gothic/type/all/view/grid?n=24&utm_source=GoogleSearch&utm_medium=cpc&utm_campaign=uk-tarot--gothic-tarot&utm_term=bohemian%20gothic%20tarot&utm_content=33088202008&gclid=CN2LmteX2LkCFQKWtAodrSMASw")).asRight |
       "New salvageable bad URI" !! "http://adserver.adtech.de/adlink|3.0" ! Some(
-        URI.create("http://adserver.adtech.de/adlink%7C3.0")).success |
+        URI.create("http://adserver.adtech.de/adlink%7C3.0")).asRight |
       "Pipe in path" !! "http://www.example.com/a|b" ! Some(
-        URI.create("http://www.example.com/a%7Cb")).success |
+        URI.create("http://www.example.com/a%7Cb")).asRight |
       "Space in path" !! "http://www.example.com/a b" ! Some(
-        URI.create("http://www.example.com/a%20b")).success |
+        URI.create("http://www.example.com/a%20b")).asRight |
       "Pipe in qs" !! "http://www.example.com/?a=b|c" ! Some(
-        URI.create("http://www.example.com/?a=b%7Cc")).success |
+        URI.create("http://www.example.com/?a=b%7Cc")).asRight |
       "Space in qs" !! "http://www.example.com/?a=b c" ! Some(
-        URI.create("http://www.example.com/?a=b%20c")).success |
+        URI.create("http://www.example.com/?a=b%20c")).asRight |
       "Forward slash in qs" !! "http://www.example.com/?a=b/c" ! Some(
-        URI.create("http://www.example.com/?a=b/c")).success |
+        URI.create("http://www.example.com/?a=b/c")).asRight |
       "Plus in qs" !! "http://www.example.com/?a=b+c" ! Some(
-        URI.create("http://www.example.com/?a=b+c")).success |
+        URI.create("http://www.example.com/?a=b+c")).asRight |
       "Salvageable URI with plus in qs" !! "http://www.example.com/|/?a=b+c" ! Some(
-        URI.create("http://www.example.com/%7C/?a=b%2Bc")).success |> { (_, uri, expected) =>
+        URI.create("http://www.example.com/%7C/?a=b%2Bc")).asRight |> { (_, uri, expected) =>
       {
         ConversionUtils.stringToUri(uri) must_== expected
       }
@@ -120,11 +119,7 @@ class FixTabsNewlinesSpec extends Specification with DataTables {
 
 // TODO: note that we have some functionality tweaks planned.
 // See comments on ConversionUtils.decodeBase64Url for details.
-class DecodeBase64UrlSpec
-    extends Specification
-    with DataTables
-    with ValidationMatchers
-    with ScalaCheck {
+class DecodeBase64UrlSpec extends Specification with DataTables with ScalaCheck {
   def is = s2"""
   This is a specification to test the decodeBase64Url function
   decodeBase64Url should return failure if passed a null                          $e1
@@ -136,13 +131,13 @@ class DecodeBase64UrlSpec
 
   // Only way of getting a failure currently
   def e1 =
-    ConversionUtils.decodeBase64Url(FieldName, null) must beFailing(
+    ConversionUtils.decodeBase64Url(FieldName, null) must beLeft(
       "Field [%s]: exception Base64-decoding [null] (URL-safe encoding): [null]".format(FieldName))
 
   // No string creates a failure
   def e2 =
-    check { (str: String) =>
-      ConversionUtils.decodeBase64Url(FieldName, str) must beSuccessful
+    prop { (str: String) =>
+      ConversionUtils.decodeBase64Url(FieldName, str) must beRight
     }
 
   // Taken from:
@@ -162,16 +157,12 @@ class DecodeBase64UrlSpec
       "Unescaped characters" !! "äöü - &" ! "" |
       "Blank string" !! "" ! "" |> { (_, str, expected) =>
       {
-        ConversionUtils.decodeBase64Url(FieldName, str) must beSuccessful(expected)
+        ConversionUtils.decodeBase64Url(FieldName, str) must beRight(expected)
       }
     }
 }
 
-class ValidateUuidSpec
-    extends Specification
-    with DataTables
-    with ValidationMatchers
-    with ScalaCheck {
+class ValidateUuidSpec extends Specification with DataTables with ScalaCheck {
   def is = s2"""
   This is a specification to test the validateUuid function
   validateUuid should return a lowercased UUID for a valid lower/upper-case UUID       $e1
@@ -190,20 +181,20 @@ class ValidateUuidSpec
 
       (_, str, expected) =>
         {
-          ConversionUtils.validateUuid(FieldName, str) must beSuccessful(expected)
+          ConversionUtils.validateUuid(FieldName, str) must beRight(expected)
         }
     }
 
   // A bit of fun: the chances of generating a valid UUID at random are
   // so low that we can just use ScalaCheck here. Checks null too
   def e2 =
-    check { (str: String) =>
-      ConversionUtils.validateUuid(FieldName, str) must beFailing(
+    prop { (str: String) =>
+      ConversionUtils.validateUuid(FieldName, str) must beLeft(
         s"Field [$FieldName]: [$str] is not a valid UUID")
     }
 }
 
-class StringToDoublelikeSpec extends Specification with DataTables with ValidationMatchers {
+class StringToDoublelikeSpec extends Specification with DataTables {
   def is = s2"""
   This is a specification to test the stringToDoublelike function
   stringToDoublelike should fail if the supplied String is not parseable as a number                    $e1
@@ -225,7 +216,7 @@ class StringToDoublelikeSpec extends Specification with DataTables with Validati
       "NaN" !! "NaN" ! err("NaN") |
       "English string" !! "hi & bye" ! err("hi & bye") |
       "Vietnamese name" !! "Trịnh Công Sơn" ! err("Trịnh Công Sơn") |> { (_, str, expected) =>
-      ConversionUtils.stringToDoublelike(FieldName, str) must beFailing(expected)
+      ConversionUtils.stringToDoublelike(FieldName, str) must beLeft(expected)
     }
 
   def e2 =
@@ -243,15 +234,15 @@ class StringToDoublelikeSpec extends Specification with DataTables with Validati
       "Sci. notation #1" !! "4.321768E3" ! "4321.768" |
       "Sci. notation #2" !! "6.72E9" ! "6720000000" |
       "Sci. notation #3" !! "7.51E-9" ! "0.00000000751" |> { (_, str, expected) =>
-      ConversionUtils.stringToDoublelike(FieldName, str) must beSuccessful(expected)
+      ConversionUtils.stringToDoublelike(FieldName, str) must beRight(expected)
     }
 
   val BigNumber = "78694235323.00000001" // Redshift only supports 15 significant digits for a Double
-  def e3 = ConversionUtils.stringToDoublelike(FieldName, BigNumber) must beSuccessful(BigNumber)
+  def e3 = ConversionUtils.stringToDoublelike(FieldName, BigNumber) must beRight(BigNumber)
 
 }
 
-class StringToJIntegerSpec extends Specification with DataTables with ValidationMatchers {
+class StringToJIntegerSpec extends Specification with DataTables {
   def is = s2"""
   This is a specification to test the stringToJInteger function
   stringToJInteger should fail if the supplied String is not parseable as an Integer $e1
@@ -270,7 +261,7 @@ class StringToJIntegerSpec extends Specification with DataTables with Validation
       "Hexadecimal number" !! "0x54" ! err("0x54") |
       "NaN" !! "NaN" ! err("NaN") |
       "Sci. notation" !! "6.72E5" ! err("6.72E5") |> { (_, str, expected) =>
-      ConversionUtils.stringToJInteger(FieldName, str) must beFailing(expected)
+      ConversionUtils.stringToJInteger(FieldName, str) must beLeft(expected)
     }
 
   def e2 =
@@ -280,11 +271,11 @@ class StringToJIntegerSpec extends Specification with DataTables with Validation
       "Negative integer #1" !! "-2012103" ! -2012103 |
       "Negative integer #2" !! "-1" ! -1 |
       "Null" !! null ! null |> { (_, str, expected) =>
-      ConversionUtils.stringToJInteger(FieldName, str) must beSuccessful(expected)
+      ConversionUtils.stringToJInteger(FieldName, str) must beRight(expected)
     }
 }
 
-class StringToBooleanlikeJByteSpec extends Specification with DataTables with ValidationMatchers {
+class StringToBooleanlikeJByteSpec extends Specification with DataTables {
   def is = s2"""
   This is a specification to test the stringToBooleanlikeJByte function
   stringToBooleanlikeJByte should fail if the supplied String is not parseable as a 1 or 0 JByte           $e1
@@ -304,13 +295,13 @@ class StringToBooleanlikeJByteSpec extends Specification with DataTables with Va
       "Large number" !! "19,999.99" ! err("19,999.99") |
       "Text #1" !! "a" ! err("a") |
       "Text #2" !! "0x54" ! err("0x54") |> { (_, str, expected) =>
-      ConversionUtils.stringToBooleanlikeJByte(FieldName, str) must beFailing(expected)
+      ConversionUtils.stringToBooleanlikeJByte(FieldName, str) must beLeft(expected)
     }
 
   def e2 =
     "SPEC NAME" || "INPUT STR" | "EXPECTED" |
       "True aka 1" !! "1" ! 1.toByte |
       "False aka 0" !! "0" ! 0.toByte |> { (_, str, expected) =>
-      ConversionUtils.stringToBooleanlikeJByte(FieldName, str) must beSuccessful(expected)
+      ConversionUtils.stringToBooleanlikeJByte(FieldName, str) must beRight(expected)
     }
 }

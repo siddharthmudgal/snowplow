@@ -16,13 +16,14 @@ import java.io.{PrintWriter, StringWriter}
 
 import scala.util.control.NonFatal
 
+import cats.data.{NonEmptyList, Validated, ValidatedNel}
+import cats.syntax.validated._
 import com.snowplowanalytics.iglu.client.Resolver
 import org.joda.time.DateTime
-import scalaz._
-import Scalaz._
 
 import adapters.AdapterRegistry
 import enrichments.{EnrichmentManager, EnrichmentRegistry}
+import loaders.CollectorPayload
 import outputs.EnrichedEvent
 
 /** Expresses the end-to-end event pipeline supported by the Scala Common Enrich project. */
@@ -45,19 +46,22 @@ object EtlPipeline {
     registry: EnrichmentRegistry,
     etlVersion: String,
     etlTstamp: DateTime,
-    input: ValidatedMaybeCollectorPayload)(
+    input: ValidatedNel[String, Option[CollectorPayload]])(
     implicit resolver: Resolver
-  ): List[ValidatedEnrichedEvent] = {
+  ): List[ValidatedNel[String, EnrichedEvent]] = {
     def flattenToList[A](
-      v: Validated[Option[Validated[NonEmptyList[Validated[A]]]]]): List[Validated[A]] = v match {
-      case Success(Some(Success(nel))) => nel.toList
-      case Success(Some(Failure(f))) => List(f.fail)
-      case Failure(f) => List(f.fail)
-      case Success(None) => Nil
+      v: ValidatedNel[String, Option[ValidatedNel[String, NonEmptyList[ValidatedNel[String, A]]]]]
+    ): List[ValidatedNel[String, A]] = v match {
+      case Validated.Valid(Some(Validated.Valid(nel))) => nel.toList
+      case Validated.Valid(Some(Validated.Invalid(f))) => List(f.invalid)
+      case Validated.Invalid(f) => List(f.invalid)
+      case Validated.Valid(None) => Nil
     }
 
     try {
-      val e: Validated[Option[Validated[NonEmptyList[ValidatedEnrichedEvent]]]] =
+      val e: ValidatedNel[
+        String,
+        Option[ValidatedNel[String, NonEmptyList[ValidatedNel[String, EnrichedEvent]]]]] =
         for {
           maybePayload <- input
         } yield
@@ -77,7 +81,7 @@ object EtlPipeline {
       case NonFatal(nf) => {
         val errorWriter = new StringWriter
         nf.printStackTrace(new PrintWriter(errorWriter))
-        List(s"Unexpected error processing events: $errorWriter".failNel)
+        List(s"Unexpected error processing events: $errorWriter".invalidNel)
       }
     }
   }
